@@ -156,36 +156,38 @@ pub fn Array(t: type) type {
         const _max = null;
         const _def: if (@typeInfo(t) == .optional) ?[]const parseFieldTypeConfig(std.meta.Child(t)).type else ?[]const parseFieldTypeConfig(t).type = null;
         pub fn default(def: if (@typeInfo(t) == .optional) []const parseFieldTypeConfig(std.meta.Child(t)).type else []const parseFieldTypeConfig(t).type) type {
-            return ArrayConfig(t, null, null, def);
+            return ArrayConfig(t, null, null, def, null, null);
         }
-        pub fn min(size: usize) type {
-            if (self._max != null and self._max.? < size) @compileError("min is greater than max");
-            return ArrayConfig(t, size, null, null);
+        pub fn min(size: usize, err: ?anyerror) type {
+            return ArrayConfig(t, size, null, null, err, null);
         }
-        pub fn max(size: usize) type {
-            if (self._min != null and self._min.? > size) @compileError("max is less than min");
-            return ArrayConfig(t, null, size, null);
+        pub fn max(size: usize, err: ?anyerror) type {
+            return ArrayConfig(t, null, size, null, null, err);
         }
     };
 }
 
-fn ArrayConfig(t: type, minimum: ?usize, maximum: ?usize, _default: if (@typeInfo(t) == .optional) ?[]const parseFieldTypeConfig(std.meta.Child(t)).type else ?[]const parseFieldTypeConfig(t).type) type {
+fn ArrayConfig(t: type, minimum: ?usize, maximum: ?usize, _default: if (@typeInfo(t) == .optional) ?[]const parseFieldTypeConfig(std.meta.Child(t)).type else ?[]const parseFieldTypeConfig(t).type, minimum_error: ?anyerror, maximum_error: ?anyerror) type {
     if (maximum != null and minimum != null and maximum.? < minimum.?) @compileError("Min can't be greater than max");
+    if (_default != null and minimum != null and _default.?.len < minimum.?) @compileError("Default len is less than min");
+    if (_default != null and maximum != null and _default.?.len > maximum.?) @compileError("Default len is greater than min");
     return struct {
         const self = @This();
         const tag = FieldType.array;
         const item = t;
         const _min = minimum;
         const _max = maximum;
+        const _min_err = minimum_error;
+        const _max_err = maximum_error;
         const _def: if (@typeInfo(t) == .optional) ?[]const parseFieldTypeConfig(std.meta.Child(t)).type else ?[]const parseFieldTypeConfig(t).type = _default orelse null;
         pub fn default(def: if (@typeInfo(t) == .optional) []const parseFieldTypeConfig(std.meta.Child(t)).type else []const parseFieldTypeConfig(t).type) type {
-            return ArrayConfig(t, self._min, self._max, def);
+            return ArrayConfig(t, self._min, self._max, def, self._min_err, self._max_err);
         }
-        pub fn min(size: usize) type {
-            return ArrayConfig(t, size, self._max, self._def);
+        pub fn min(size: usize, err: ?anyerror) type {
+            return ArrayConfig(t, size, self._max, self._def, err, self._max_err);
         }
-        pub fn max(size: usize) type {
-            return ArrayConfig(t, self._min, size, self._def);
+        pub fn max(size: usize, err: ?anyerror) type {
+            return ArrayConfig(t, self._min, size, self._def, self._min_err, err);
         }
     };
 }
@@ -264,13 +266,23 @@ pub fn validate(self: *const Validation, payload: self.infer(), allocator: ?std.
             .array => {
                 if (@typeInfo(field_schema.item) == .optional) {
                     if (field_val != null) {
-                        if ((field_schema._min != null and field_val.?.len < field_schema._min.?) or (field_schema._max != null and field_val.?.len > field_schema._max.?)) return error.invalid_payload;
+                        if ((field_schema._min != null and field_val.?.len < field_schema._min.?)) {
+                            return field_schema._min_err orelse error.invalid_payload;
+                        }
+                        if ((field_schema._max != null and field_val.?.len > field_schema._max.?)) {
+                            return field_schema._max_err orelse error.invalid_payload;
+                        }
                         const item_schema = std.meta.Child(field_schema.item);
                         const new_items = try checkArrayItems(field_val.?, item_schema, allocator);
                         @field(new, f.name) = new_items orelse field_val;
                     }
                 } else {
-                    if ((field_schema._min != null and field_val.len < field_schema._min.?) or (field_schema._max != null and field_val.len > field_schema._max.?)) return error.invalid_payload;
+                    if ((field_schema._min != null and field_val.len < field_schema._min.?)) {
+                        return field_schema._min_err orelse error.invalid_payload;
+                    }
+                    if ((field_schema._max != null and field_val.len > field_schema._max.?)) {
+                        return field_schema._max_err orelse error.invalid_payload;
+                    }
                     const item_schema = field_schema.item;
                     const new_items = try checkArrayItems(field_val, item_schema, allocator);
                     @field(new, f.name) = new_items orelse field_val;
@@ -489,5 +501,42 @@ test Boolean {
         const instance = result{};
         try std.testing.expect(@FieldType(result, "is_email_verified") == ?bool);
         try std.testing.expect(instance.is_email_verified == null);
+    }
+}
+
+test Array {
+    { //check defaults
+        const many_strings = Array(String);
+        try std.testing.expect(many_strings.tag == .array);
+        try std.testing.expect(many_strings._def == null);
+        try std.testing.expect(many_strings._min == null);
+        try std.testing.expect(many_strings._max == null);
+        try std.testing.expect(many_strings.item == String);
+    }
+    { //check defaults
+        const many_strings = Array(String).min(0, error.min_error).max(10, error.max_error).default(&.{"testing"});
+        try std.testing.expect(many_strings.tag == .array);
+        try std.testing.expect(many_strings._min.? == 0);
+        try std.testing.expect(many_strings._max.? == 10);
+        try std.testing.expect(many_strings.item == String);
+        try std.testing.expectEqualSlices([]const u8, &.{"testing"}, many_strings._def.?);
+    }
+    { // in struct with default value
+        const sample_schema = schema(struct {
+            team: Array(String).default(&.{ "autobots", "decepticons", "machine" }),
+        });
+        const result = sample_schema.infer();
+        const instance = result{};
+        try std.testing.expect(@FieldType(result, "team") == []const []const u8);
+        try std.testing.expectEqualSlices([]const u8, &.{ "autobots", "decepticons", "machine" }, instance.team);
+    }
+    { // in struct with default value
+        const sample_schema = schema(struct {
+            team: Array(?String),
+        });
+        const result = sample_schema.infer();
+        const instance = result{};
+        try std.testing.expect(@FieldType(result, "team") == ?[]const []const u8);
+        try std.testing.expect(instance.team == null);
     }
 }
