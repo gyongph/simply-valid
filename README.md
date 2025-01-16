@@ -1,2 +1,3 @@
 # simply-valid
-A zig simple validation.
+A zig simple validation. 
+# Installation
