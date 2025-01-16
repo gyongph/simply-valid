@@ -2,7 +2,7 @@
 A zig simple validation. 
 # Installation
 ```bash
-zig fetch --save git+@github.com:gyongph/simply-valid.git
+zig fetch --save git+https://github.com/gyongph/simply-valid.git
 ```
 # How to use
 ```zig
