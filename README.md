@@ -35,7 +35,7 @@ const ProfileSchema = SimplyValid.schema(struct {
         Numeric(u5)
             .min(0, null)
             .max(10, error.max_fav_number),
-    ).min(3),
+    ).min(3, error.fav_number_min),
 });
 
 const profile = ProfileSchema.infer(){
