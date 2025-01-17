@@ -39,6 +39,8 @@ pub const String = struct {
 
 fn StringConfig(minimum: ?usize, maximum: ?usize, _optional: ?bool, _default: ?[]const u8, minimum_error: ?anyerror, maximum_error: ?anyerror) type {
     if (maximum != null and minimum != null and maximum.? < minimum.?) @compileError("Min can't be greater than max");
+    if (_default != null and minimum != null and _default.?.len < minimum.?) @compileError("Default len is less than min");
+    if (_default != null and maximum != null and _default.?.len > maximum.?) @compileError("Default len is greater than min");
     return struct {
         const self = @This();
         const tag: FieldType = .string;
