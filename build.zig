@@ -24,7 +24,10 @@ pub fn build(b: *std.Build) !void {
             .root_source_file = b.path("src/root.zig"),
             .target = target,
             .optimize = optimize,
-            .test_runner = b.path("test-runner.zig"),
+            .test_runner = .{
+                .mode = .simple,
+                .path = b.path("test-runner.zig"),
+            },
         });
         addLibs(lib_test, modules);
 

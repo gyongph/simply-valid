@@ -196,24 +196,24 @@ fn ArrayConfig(t: type, minimum: ?usize, maximum: ?usize, _default: if (@typeInf
 
 fn parseFieldTypeConfig(f: type) struct {
     type: type,
-    default_value: ?*const anyopaque,
+    default_value_ptr: ?*const anyopaque,
 } {
     return switch (f.tag) {
         .string => .{
             .type = if (f._opt) ?[]const u8 else []const u8,
-            .default_value = if (f._opt) @as(?*const anyopaque, @ptrCast(&f._def)) else if (f._def != null) @as(?*const anyopaque, @ptrCast(&f._def.?)) else null,
+            .default_value_ptr = if (f._opt) @as(?*const anyopaque, @ptrCast(&f._def)) else if (f._def != null) @as(?*const anyopaque, @ptrCast(&f._def.?)) else null,
         },
         .numeric => .{
             .type = f.num_type,
-            .default_value = if (@typeInfo(f.num_type) == .optional) @as(?*const anyopaque, @ptrCast(&f._def)) else if (f._def != null) @as(?*const anyopaque, @ptrCast(&f._def.?)) else null,
+            .default_value_ptr = if (@typeInfo(f.num_type) == .optional) @as(?*const anyopaque, @ptrCast(&f._def)) else if (f._def != null) @as(?*const anyopaque, @ptrCast(&f._def.?)) else null,
         },
         .boolean => .{
             .type = if (f._opt) ?bool else bool,
-            .default_value = if (f._opt) @as(?*const anyopaque, @ptrCast(&f._def)) else if (f._def != null) @as(?*const anyopaque, @ptrCast(&f._def.?)) else null,
+            .default_value_ptr = if (f._opt) @as(?*const anyopaque, @ptrCast(&f._def)) else if (f._def != null) @as(?*const anyopaque, @ptrCast(&f._def.?)) else null,
         },
         .array => .{
             .type = if (@typeInfo(f.item) == .optional) ?[]const parseFieldTypeConfig(std.meta.Child(f.item)).type else []const parseFieldTypeConfig(f.item).type,
-            .default_value = if (@typeInfo(f.item) == .optional) @as(?*const anyopaque, @ptrCast(&f._def)) else if (f._def != null) @as(?*const anyopaque, @ptrCast(&f._def.?)) else null,
+            .default_value_ptr = if (@typeInfo(f.item) == .optional) @as(?*const anyopaque, @ptrCast(&f._def)) else if (f._def != null) @as(?*const anyopaque, @ptrCast(&f._def.?)) else null,
         },
     };
 }
@@ -226,7 +226,7 @@ pub fn infer(self: *const Validation) type {
         fields[i] = .{
             .name = f.name,
             .type = config.type,
-            .default_value = config.default_value,
+            .default_value_ptr = config.default_value_ptr,
             .is_comptime = false,
             .alignment = 0,
         };
