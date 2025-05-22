@@ -24,13 +24,7 @@ fn _String(comptime args: StringArgs) type {
         pub const _nullable = args.nullable;
         pub const _type = if (_nullable) ?[]const u8 else []const u8;
         pub fn fieldType(name: [:0]const u8) std.builtin.Type.StructField {
-            return .{
-                .name = name,
-                .type = _type,
-                .default_value_ptr = if (_default != null) @ptrCast(&_default.?) else if (_null_default) @ptrCast(&_default) else null,
-                .is_comptime = false,
-                .alignment = 0,
-            };
+            return .{ .name = name, .type = _type, .default_value_ptr = if (_default != null) @ptrCast(&_default.?) else if (_null_default) @ptrCast(&_default) else null, .is_comptime = false };
         }
         pub fn max(v: u64) type {
             return _String(.{
@@ -713,13 +707,15 @@ fn _Array(T: type, args: ArrayArgs(T)) type {
     };
 }
 
-pub fn Array(T: type) type {
-    return _Array(T, .{});
-}
+pub const Array = struct {
+    pub fn child_schema(T: type) type {
+        return _Array(T, .{});
+    }
+};
 test Array {
     // required
     {
-        const colors = Array(
+        const colors = Array.child_schema(
             String.min(1).errorMsg("min error").default(null),
         );
         try t.expectEqual(error.required, colors.parse(null));
@@ -727,48 +723,50 @@ test Array {
 
     // min error msg
     {
-        const colors = Array(Numeric(u8)).min(1);
+        const colors = Array.child_schema(Numeric(u8)).min(1);
         try t.expectEqual(error.string_min_len, colors.parse(&.{}));
         try t.expectEqualStrings("Too few items.", colors.error_message.?);
     }
 
     // min custom error msg
     {
-        const name_schema = String.min(4).errorMsg("Custom");
-        try t.expectEqual(error.string_min_len, name_schema.parse("abc"));
-        try t.expectEqualStrings("Custom", name_schema.error_message.?);
+        const numbers = Array.child_schema(Numeric(u8)).min(4).errorMsg("Custom");
+        try t.expectEqual(error.string_min_len, numbers.parse(&.{ 1, 2, 3 }));
+        try t.expectEqualStrings("Custom", numbers.error_message.?);
     }
 
     // max error msg
     {
-        const name_schema = String.max(4);
-        try t.expectEqual(error.string_max_len, name_schema.parse("abcde"));
-        try t.expectEqualStrings("Length is greater than maximum.", name_schema.error_message.?);
+        const flags = Array.child_schema(Bool).max(2);
+        try t.expectEqual(error.string_max_len, flags.parse(&.{ false, true, true }));
+        try t.expectEqualStrings("Too many items.", flags.error_message.?);
     }
 
     // max custom error msg
     {
-        const name_schema = String.max(4).errorMsg("Custom");
-        try t.expectEqual(error.string_max_len, name_schema.parse("abcde"));
-        try t.expectEqualStrings("Custom", name_schema.error_message.?);
+        const flags = Array.child_schema(Bool.nullable()).max(2).errorMsg("Custom");
+        try t.expectEqual(error.string_max_len, flags.parse(&.{ false, true, null }));
+        try t.expectEqualStrings("Custom", flags.error_message.?);
     }
 
     // default value
     {
-        const name_schema = String.default("any text");
-        try t.expectEqualStrings("any text", try name_schema.parse(null));
+        const default_colors = &.{ "red", "blue", "green" };
+        const primary_colors = Array.child_schema(String).default(default_colors);
+        try t.expectEqualSlices([]const u8, default_colors, try primary_colors.parse(null));
     }
 
     // null default
     {
-        const name_schema = String.min(1).default(null);
-        try t.expectEqual(null, try name_schema.parse(null));
+        const cart_items = Array.child_schema(String).default(null);
+        try t.expectEqual(null, try cart_items.parse(null));
     }
 
     // nullable
     {
-        const name_schema = String.min(1).nullable();
-        try t.expectEqual(null, try name_schema.parse(null));
-        try t.expectEqual("Test", try name_schema.parse("Test"));
+        const contacts = Array.child_schema(Numeric(u32)).nullable();
+        try t.expectEqual(null, try contacts.parse(null));
+        const sample: []const u32 = &.{ 99991122, 11233312 };
+        try t.expectEqual(sample, try contacts.parse(sample));
     }
 }
