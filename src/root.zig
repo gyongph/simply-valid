@@ -450,7 +450,28 @@ pub fn Schema(s: type) type {
 test Schema {
     const User = struct {
         string_required: []const u8,
-        string_default: []const u8 = "test",
+        string_default: []const u8,
+        string_nullable: ?[]const u8,
+        string_default_null: ?[]const u8,
+        string_nullable_with_default: ?[]const u8,
+
+        numeric_required: u8,
+        numeric_default: u8,
+        numeric_nullable: ?u8,
+        numeric_default_null: ?u8,
+        numeric_nullable_with_default: ?u8,
+
+        bool_required: bool,
+        bool_default: bool,
+        bool_nullable: ?bool,
+        bool_default_null: ?bool,
+        bool_nullable_with_default: ?bool,
+
+        array_required: []const bool,
+        array_default: []const bool,
+        array_nullable: ?[]const bool,
+        array_default_null: ?[]const bool,
+        array_nullable_with_default: ?[]const bool,
     };
 
     const UserSchema = Schema(
