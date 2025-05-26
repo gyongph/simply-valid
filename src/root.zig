@@ -106,11 +106,11 @@ fn _String(comptime args: StringArgs) type {
             const v_length = sure_val.len;
             if (_max != null and v_length > _max.?) {
                 if (!@inComptime()) error_message = args.field_error_msg orelse _max_error_msg;
-                return error.string_max_len;
+                return error.too_long;
             }
             if (_min != null and v_length < _min.?) {
                 if (!@inComptime()) error_message = args.field_error_msg orelse _min_error_msg;
-                return error.string_min_len;
+                return error.too_short;
             }
             // Field with default value can accept a null input and will always
             // output a string
@@ -622,28 +622,28 @@ test String {
     // min error msg
     {
         const name_schema = String.Min(4);
-        try t.expectError(error.string_min_len, name_schema.parse("abc"));
+        try t.expectError(error.too_short, name_schema.parse("abc"));
         try t.expectEqualStrings("Length is less than minimum.", name_schema.error_message.?);
     }
 
     // min custom error msg
     {
         const name_schema = String.Min(4).ErrorMsg("Custom");
-        try t.expectEqual(error.string_min_len, name_schema.parse("abc"));
+        try t.expectEqual(error.too_short, name_schema.parse("abc"));
         try t.expectEqualStrings("Custom", name_schema.error_message.?);
     }
 
     // max error msg
     {
         const name_schema = String.Max(4);
-        try t.expectEqual(error.string_max_len, name_schema.parse("abcde"));
+        try t.expectEqual(error.too_long, name_schema.parse("abcde"));
         try t.expectEqualStrings("Length is greater than maximum.", name_schema.error_message.?);
     }
 
     // max custom error msg
     {
         const name_schema = String.Max(4).ErrorMsg("Custom");
-        try t.expectEqual(error.string_max_len, name_schema.parse("abcde"));
+        try t.expectEqual(error.too_long, name_schema.parse("abcde"));
         try t.expectEqualStrings("Custom", name_schema.error_message.?);
     }
 
@@ -811,11 +811,11 @@ fn _Array(T: type, args: ArrayArgs(T)) type {
             const v_length = sure_val.len;
             if (_max != null and v_length > _max.?) {
                 if (!@inComptime()) error_message = _max_error_msg;
-                return error.string_max_len;
+                return error.too_many_items;
             }
             if (_min != null and v_length < _min.?) {
                 if (!@inComptime()) error_message = _min_error_msg;
-                return error.string_min_len;
+                return error.too_few_items;
             }
             for (sure_val) |item| {
                 try T.validate(item);
@@ -848,28 +848,28 @@ test Array {
     // min error msg
     {
         const colors = Array.ChildSchema(Numeric(u8)).Min(1);
-        try t.expectEqual(error.string_min_len, colors.parse(&.{}));
+        try t.expectEqual(error.too_few_items, colors.parse(&.{}));
         try t.expectEqualStrings("Too few items.", colors.error_message.?);
     }
 
     // min custom error msg
     {
         const numbers = Array.ChildSchema(Numeric(u8)).Min(4).ErrorMsg("Custom");
-        try t.expectEqual(error.string_min_len, numbers.parse(&.{ 1, 2, 3 }));
+        try t.expectEqual(error.too_few_items, numbers.parse(&.{ 1, 2, 3 }));
         try t.expectEqualStrings("Custom", numbers.error_message.?);
     }
 
     // max error msg
     {
         const flags = Array.ChildSchema(Bool).Max(2);
-        try t.expectEqual(error.string_max_len, flags.parse(&.{ false, true, true }));
+        try t.expectEqual(error.too_many_items, flags.parse(&.{ false, true, true }));
         try t.expectEqualStrings("Too many items.", flags.error_message.?);
     }
 
     // max custom error msg
     {
         const flags = Array.ChildSchema(Bool.Nullable()).Max(2).ErrorMsg("Custom");
-        try t.expectEqual(error.string_max_len, flags.parse(&.{ false, true, null }));
+        try t.expectEqual(error.too_many_items, flags.parse(&.{ false, true, null }));
         try t.expectEqualStrings("Custom", flags.error_message.?);
     }
 
