@@ -1,6 +1,67 @@
 const std = @import("std");
 const t = std.testing;
 const t_alloc = t.allocator;
+test String {
+    // required
+    {
+        const name_schema = String;
+        try t.expectEqual(error.required, name_schema.parse(null));
+    }
+
+    // min error msg
+    {
+        const name_schema = String.Min(4);
+        try t.expectError(error.too_short, name_schema.parse("abc"));
+        try t.expectEqualStrings("Length is less than minimum.", name_schema.error_message.?);
+    }
+
+    // min custom error msg
+    {
+        const name_schema = String.Min(4).ErrorMsg("Custom");
+        try t.expectEqual(error.too_short, name_schema.parse("abc"));
+        try t.expectEqualStrings("Custom", name_schema.error_message.?);
+    }
+
+    // max error msg
+    {
+        const name_schema = String.Max(4);
+        try t.expectEqual(error.too_long, name_schema.parse("abcde"));
+        try t.expectEqualStrings("Length is greater than maximum.", name_schema.error_message.?);
+    }
+
+    // max custom error msg
+    {
+        const name_schema = String.Max(4).ErrorMsg("Custom");
+        try t.expectEqual(error.too_long, name_schema.parse("abcde"));
+        try t.expectEqualStrings("Custom", name_schema.error_message.?);
+    }
+
+    // default value
+    {
+        const name_schema = String.Default("any text");
+        try t.expectEqualStrings("any text", try name_schema.parse(null));
+    }
+
+    // null default
+    {
+        const name_schema = String.Min(1).Default(null);
+        try t.expectEqual(null, try name_schema.parse(null));
+    }
+
+    // nullable
+    {
+        const name_schema = String.Min(1).Nullable();
+        try t.expectEqual(null, try name_schema.parse(null));
+        try t.expectEqual("Test", try name_schema.parse("Test"));
+    }
+
+    // nullable with default
+    {
+        const name_schema = String.Nullable().Default("MUST NOT BE");
+        try t.expectEqual(null, try name_schema.parse(null));
+    }
+}
+
 const StringArgs = struct {
     min: ?u64 = null,
     max: ?u64 = null,
@@ -14,102 +75,74 @@ const StringArgs = struct {
 };
 fn _String(comptime args: StringArgs) type {
     return struct {
+        pub const props = args;
         pub var error_message: ?[]const u8 = null;
-        pub const _min = args.min;
-        pub const _max = args.max;
-        pub const _min_error_msg: ?[]const u8 = args.min_error_msg;
-        pub const _max_error_msg: ?[]const u8 = args.max_error_msg;
+        pub const _type = if (args.nullable) ?[]const u8 else []const u8;
         pub const _null_default = args.null_default;
-        pub const _default = args.default;
         pub const _nullable = args.nullable;
-        pub const _type = if (_nullable) ?[]const u8 else []const u8;
+        pub const _default: ?[]const u8 = args.default;
         pub fn FieldType(name: [:0]const u8) std.builtin.Type.StructField {
             return .{
                 .name = name,
                 .type = _type,
-                .default_value_ptr = if (_default != null) if (_nullable) &_default else @ptrCast(&_default.?) else if (_null_default) @ptrCast(&_default) else null,
+                .default_value_ptr =
+                // with non-null default
+                if (_default != null) if (_nullable) &_default else @ptrCast(&_default.?)
+                // null as a default
+                else if (_null_default) @ptrCast(&_default)
+                // no default
+                else null,
                 .is_comptime = false,
-                .alignment = 0,
+                .alignment = 1,
             };
         }
         pub fn Max(v: u64) type {
-            return _String(.{
-                .max = v,
-                .min = args.min,
-                .default = args.default,
-                .nullable = args.nullable,
-                .null_default = args.null_default,
-                .error_msg_for = .max,
-                .min_error_msg = args.min_error_msg,
-                .max_error_msg = args.max_error_msg,
-                .field_error_msg = args.field_error_msg,
-            });
+            var _props = props;
+            _props.max = v;
+            return _String(_props);
         }
         pub fn Min(v: u64) type {
-            return _String(.{
-                .max = args.max,
-                .min = v,
-                .default = args.default,
-                .null_default = args.null_default,
-                .nullable = args.nullable,
-                .error_msg_for = .min,
-                .min_error_msg = args.min_error_msg,
-                .max_error_msg = args.max_error_msg,
-                .field_error_msg = args.field_error_msg,
-            });
+            var _props = props;
+            _props.min = v;
+            return _String(_props);
         }
         pub fn Nullable() type {
-            return _String(.{
-                .max = args.max,
-                .min = args.min,
-                .default = args.default,
-                .null_default = args.null_default,
-                .nullable = true,
-                .min_error_msg = args.min_error_msg,
-                .max_error_msg = args.max_error_msg,
-                .field_error_msg = args.field_error_msg,
-            });
+            var _props = props;
+            _props.nullable = true;
+            return _String(_props);
         }
         pub fn Default(v: ?[]const u8) type {
-            return _String(.{
-                .max = args.max,
-                .min = args.min,
-                .default = v,
-                .nullable = if (v == null) true else args.nullable,
-                .null_default = if (v == null) true else args.null_default,
-                .min_error_msg = args.min_error_msg,
-                .max_error_msg = args.max_error_msg,
-                .field_error_msg = args.field_error_msg,
-            });
+            var _props = props;
+            if (v == null) {
+                _props.nullable = true;
+                _props.null_default = true;
+                _props.default = null;
+            } else _props.default = v.?;
+            return _String(_props);
         }
         pub fn ErrorMsg(err_msg: []const u8) type {
-            return _String(.{
-                .max = args.max,
-                .min_error_msg = if (args.error_msg_for == .min) err_msg else args.min_error_msg,
-                .max_error_msg = if (args.error_msg_for == .max) err_msg else args.max_error_msg,
-                .field_error_msg = if (args.error_msg_for == .field) err_msg else args.field_error_msg,
-                .min = args.min,
-                .default = args.default,
-                .null_default = args.null_default,
-                .nullable = args.nullable,
-                .error_msg_for = .field,
-            });
+            var _props = props;
+            _props.error_msg_for = .field;
+            _props.min_error_msg = if (args.error_msg_for == .min) err_msg else args.min_error_msg;
+            _props.max_error_msg = if (args.error_msg_for == .max) err_msg else args.max_error_msg;
+            _props.field_error_msg = if (args.error_msg_for == .field) err_msg else args.field_error_msg;
+            return _String(_props);
         }
         fn _parse(v: ?[]const u8, comptime check_only: bool) !if (check_only) void else _type {
-            if (_nullable and v == null) return if (!check_only) v;
-            if (v == null and _default != null) return if (!check_only) _default.?;
-            if (!_nullable and v == null) {
+            if (args.nullable and v == null) return if (!check_only) v;
+            if (v == null and args.default != null) return if (!check_only) args.default.?;
+            if (!args.nullable and v == null) {
                 if (!@inComptime()) error_message = "required";
                 return error.required;
             }
             const sure_val = v.?;
             const v_length = sure_val.len;
-            if (_max != null and v_length > _max.?) {
-                if (!@inComptime()) error_message = args.field_error_msg orelse _max_error_msg;
+            if (args.max != null and v_length > args.max.?) {
+                if (!@inComptime()) error_message = args.field_error_msg orelse args.max_error_msg;
                 return error.too_long;
             }
-            if (_min != null and v_length < _min.?) {
-                if (!@inComptime()) error_message = args.field_error_msg orelse _min_error_msg;
+            if (args.min != null and v_length < args.min.?) {
+                if (!@inComptime()) error_message = args.field_error_msg orelse args.min_error_msg;
                 return error.too_short;
             }
             // Field with default value can accept a null input and will always
@@ -145,14 +178,11 @@ fn NumericArgs(T: type) type {
 }
 fn _Numeric(comptime T: type, comptime args: NumericArgs(T)) type {
     return struct {
+        pub const props = args;
         pub var error_message: ?[]const u8 = null;
-        pub const _min = args.min;
-        pub const _max = args.max;
         pub const _default = args.default;
         pub const _nullable = args.nullable;
         pub const _null_default = args.null_default;
-        pub const _min_error_msg: ?[]const u8 = args.min_error_msg;
-        pub const _max_error_msg: ?[]const u8 = args.max_error_msg;
         pub const _type = if (_nullable) ?T else T;
 
         pub fn FieldType(name: [:0]const u8) std.builtin.Type.StructField {
@@ -161,76 +191,43 @@ fn _Numeric(comptime T: type, comptime args: NumericArgs(T)) type {
                 .type = _type,
                 .default_value_ptr = if (_default != null) if (_nullable) &_default else @ptrCast(&_default.?) else if (_null_default) @ptrCast(&_default) else null,
                 .is_comptime = false,
-                .alignment = 0,
+                .alignment = 1,
             };
         }
 
         pub fn Min(v: u64) type {
-            return _Numeric(T, .{
-                .min = v,
-                .max = args.max,
-                .default = args.default,
-                .null_default = args.null_default,
-                .nullable = args.nullable,
-                .min_error_msg = args.min_error_msg,
-                .max_error_msg = args.max_error_msg,
-                .error_msg_for = .min,
-                .field_error_msg = args.field_error_msg,
-            });
+            var _props = props;
+            _props.min = v;
+            return _Numeric(T, _props);
         }
 
         pub fn Max(v: u64) type {
-            return _Numeric(T, .{
-                .min = args.min,
-                .max = v,
-                .default = args.default,
-                .null_default = args.null_default,
-                .nullable = args.nullable,
-                .min_error_msg = args.min_error_msg,
-                .max_error_msg = args.max_error_msg,
-                .error_msg_for = .max,
-                .field_error_msg = args.field_error_msg,
-            });
+            var _props = props;
+            _props.max = v;
+            return _Numeric(T, _props);
         }
 
         pub fn Default(v: ?T) type {
-            return _Numeric(T, .{
-                .min = args.min,
-                .max = args.max,
-                .default = v,
-                .null_default = if (v == null) true else args.null_default,
-                .nullable = if (v == null) true else args.nullable,
-                .min_error_msg = args.min_error_msg,
-                .max_error_msg = args.max_error_msg,
-                .field_error_msg = args.field_error_msg,
-            });
+            var _props = props;
+            _props.null_default = if (v == null) true else args.null_default;
+            _props.nullable = if (v == null) true else args.nullable;
+            _props.default = v;
+            return _Numeric(T, _props);
         }
 
         pub fn Nullable() type {
-            return _Numeric(T, .{
-                .max = args.max,
-                .min = args.min,
-                .default = args.default,
-                .null_default = args.null_default,
-                .nullable = true,
-                .min_error_msg = args.min_error_msg,
-                .max_error_msg = args.max_error_msg,
-                .field_error_msg = args.field_error_msg,
-            });
+            var _props = props;
+            _props.nullable = true;
+            return _Numeric(T, _props);
         }
 
         pub fn ErrorMsg(err_msg: []const u8) type {
-            return _Numeric(T, .{
-                .min = args.min,
-                .max = args.max,
-                .default = args.default,
-                .null_default = args.null_default,
-                .nullable = args.nullable,
-                .min_error_msg = if (args.error_msg_for == .min) err_msg else args.min_error_msg,
-                .max_error_msg = if (args.error_msg_for == .max) err_msg else args.max_error_msg,
-                .field_error_msg = if (args.error_msg_for == .field) err_msg else args.field_error_msg,
-                .error_msg_for = .field,
-            });
+            var _props = props;
+            _props.min_error_msg = if (args.error_msg_for == .min) err_msg else args.min_error_msg;
+            _props.max_error_msg = if (args.error_msg_for == .max) err_msg else args.max_error_msg;
+            _props.field_error_msg = if (args.error_msg_for == .field) err_msg else args.field_error_msg;
+            _props.error_msg_for = .field;
+            return _Numeric(T, _props);
         }
 
         pub fn _parse(v: ?T, comptime check_only: bool) !if (check_only) void else _type {
@@ -241,12 +238,12 @@ fn _Numeric(comptime T: type, comptime args: NumericArgs(T)) type {
                 return error.required;
             }
             const val = v.?;
-            if (_min != null and val < _min.?) {
-                if (!@inComptime()) error_message = args.field_error_msg orelse _min_error_msg;
+            if (props.min != null and val < props.min.?) {
+                if (!@inComptime()) error_message = args.field_error_msg orelse props.min_error_msg;
                 return error.too_small;
             }
-            if (_max != null and val > _max.?) {
-                if (!@inComptime()) error_message = args.field_error_msg orelse _max_error_msg;
+            if (props.max != null and val > props.max.?) {
+                if (!@inComptime()) error_message = args.field_error_msg orelse props.max_error_msg;
                 return error.too_large;
             }
             return if (!check_only) val;
@@ -284,7 +281,7 @@ fn _Bool(args: _BoolArgs) type {
                 .type = _type,
                 .default_value_ptr = if (_default != null) if (_nullable) &_default else @ptrCast(&_default.?) else if (_null_default) @ptrCast(&_default) else null,
                 .is_comptime = false,
-                .alignment = 0,
+                .alignment = 1,
             };
         }
         pub fn Default(v: ?bool) type {
@@ -365,7 +362,7 @@ pub fn Schema(s: type) type {
                         .type = if (field.type._nullable) field.type._type else ?field.type._type,
                         .default_value_ptr = &field.type._default,
                         .is_comptime = false,
-                        .alignment = 0,
+                        .alignment = 1,
                     };
                 } else fields[i] = field.type.FieldType(field.name);
             }
@@ -612,67 +609,6 @@ test Numeric {
     }
 }
 
-test String {
-    // required
-    {
-        const name_schema = String;
-        try t.expectEqual(error.required, name_schema.parse(null));
-    }
-
-    // min error msg
-    {
-        const name_schema = String.Min(4);
-        try t.expectError(error.too_short, name_schema.parse("abc"));
-        try t.expectEqualStrings("Length is less than minimum.", name_schema.error_message.?);
-    }
-
-    // min custom error msg
-    {
-        const name_schema = String.Min(4).ErrorMsg("Custom");
-        try t.expectEqual(error.too_short, name_schema.parse("abc"));
-        try t.expectEqualStrings("Custom", name_schema.error_message.?);
-    }
-
-    // max error msg
-    {
-        const name_schema = String.Max(4);
-        try t.expectEqual(error.too_long, name_schema.parse("abcde"));
-        try t.expectEqualStrings("Length is greater than maximum.", name_schema.error_message.?);
-    }
-
-    // max custom error msg
-    {
-        const name_schema = String.Max(4).ErrorMsg("Custom");
-        try t.expectEqual(error.too_long, name_schema.parse("abcde"));
-        try t.expectEqualStrings("Custom", name_schema.error_message.?);
-    }
-
-    // default value
-    {
-        const name_schema = String.Default("any text");
-        try t.expectEqualStrings("any text", try name_schema.parse(null));
-    }
-
-    // null default
-    {
-        const name_schema = String.Min(1).Default(null);
-        try t.expectEqual(null, try name_schema.parse(null));
-    }
-
-    // nullable
-    {
-        const name_schema = String.Min(1).Nullable();
-        try t.expectEqual(null, try name_schema.parse(null));
-        try t.expectEqual("Test", try name_schema.parse("Test"));
-    }
-
-    // nullable with default
-    {
-        const name_schema = String.Nullable().Default("MUST NOT BE");
-        try t.expectEqual(null, try name_schema.parse(null));
-    }
-}
-
 test Bool {
     // required
     {
@@ -729,7 +665,7 @@ fn _Array(T: type, args: ArrayArgs(T)) type {
                 .type = _type,
                 .default_value_ptr = if (_default != null) if (_nullable) &_default else @ptrCast(&_default.?) else if (_null_default) @ptrCast(&_default) else null,
                 .is_comptime = false,
-                .alignment = 0,
+                .alignment = 1,
             };
         }
         pub fn Max(v: u64) type {
