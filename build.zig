@@ -14,16 +14,16 @@ pub fn build(b: *std.Build) !void {
     defer modules.deinit();
 
     // Expose this as a module that others can import
-    _ = b.addModule("simply-valid", .{
+    const mod = b.addModule("simply-valid", .{
         .root_source_file = b.path("src/root.zig"),
+        .optimize = optimize,
+        .target = target,
     });
 
     {
         // test step
         const lib_test = b.addTest(.{
-            .root_source_file = b.path("src/root.zig"),
-            .target = target,
-            .optimize = optimize,
+            .root_module = mod,
             .test_runner = .{
                 .mode = .simple,
                 .path = b.path("test-runner.zig"),
